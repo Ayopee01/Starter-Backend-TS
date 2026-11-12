@@ -1,0 +1,209 @@
+paths:
+  /api/auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Login และสร้าง session ใหม่
+      description: |
+        ตรวจ username/password แล้วออก Access Token และ Refresh Token พร้อมบันทึก session
+        1 account มีได้ 1 session เท่านั้น การ login ใหม่จะ revoke session เดิมทั้งหมด (token เดิมใช้ไม่ได้ทันที)
+
+        Session มี absolute cap นับจาก login ครั้งนี้ (env JWT_REFRESH_EXPIRES_IN, default 24 ชั่วโมง)
+        ไม่ต่ออายุแม้ /api/auth/refresh จะสำเร็จซ้ำหลายครั้ง
+      operationId: login
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login สำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSuccessResponse"
+        "400":
+          description: VALIDATION_ERROR request body ไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: >-
+            INVALID_CREDENTIALS ไม่พบ username, รหัสผ่านผิด หรือบัญชีถูกปิดใช้งาน (ตอบเหมือนกันทุกกรณี)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/auth/refresh:
+    post:
+      tags:
+        - Auth
+      summary: ขอ Access Token ใหม่ด้วย Refresh Token
+      description: |
+        ออก Access Token และ Refresh Token ชุดใหม่ Refresh Token เดิมจะใช้ซ้ำไม่ได้อีก (rotation)
+        ถ้า session ถูก revoke (login ซ้ำ / logout) หรือหมดอายุแล้วจะได้ 401 INVALID_REFRESH_TOKEN ต้อง login ใหม่
+      operationId: refresh
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshRequest"
+      responses:
+        "200":
+          description: ออก token ชุดใหม่สำเร็จ (ไม่มี profile)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthSuccessResponse"
+        "400":
+          description: VALIDATION_ERROR request body ไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: INVALID_REFRESH_TOKEN หรือ TOKEN_EXPIRED
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "423":
+          description: ACCOUNT_INACTIVE บัญชีถูกปิดใช้งาน
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/auth/forgot-password:
+    post:
+      tags:
+        - Auth
+      summary: ขอลิงก์ตั้งรหัสผ่านใหม่ทาง email
+      description: |
+        ถ้า email ตรงกับบัญชีที่ active ระบบจะส่งลิงก์ PASSWORD_RESET_URL?token=... ไปที่ email นั้น
+        - ตอบ 200 ข้อความเดียวกันทุกกรณี ไม่บอกว่ามี email นี้ในระบบหรือไม่
+        - ลิงก์มีอายุตาม PASSWORD_RESET_EXPIRES_IN (default 30 นาที) ใช้ได้ครั้งเดียว
+        - ขอลิงก์ใหม่จะทำให้ลิงก์เก่าใช้ไม่ได้ ขอซ้ำภายใน 60 วินาทีจะไม่ส่ง email ใหม่
+      operationId: forgotPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ForgotPasswordRequest"
+      responses:
+        "200":
+          description: รับคำขอแล้ว (ส่ง email ถ้าพบบัญชี)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: VALIDATION_ERROR รูปแบบ email ไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/auth/reset-password:
+    post:
+      tags:
+        - Auth
+      summary: ตั้งรหัสผ่านใหม่ด้วย token จาก email
+      description: |
+        หน้าเว็บ frontend อ่าน token จาก query string ของลิงก์ แล้วส่งมาพร้อมรหัสผ่านใหม่
+        สำเร็จแล้ว token ใช้ซ้ำไม่ได้ และ session ทั้งหมดของบัญชีถูก revoke ต้อง login ใหม่
+      operationId: resetPassword
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ResetPasswordWithTokenRequest"
+      responses:
+        "200":
+          description: ตั้งรหัสผ่านใหม่สำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: VALIDATION_ERROR / INVALID_RESET_TOKEN token ผิด หมดอายุ หรือถูกใช้ไปแล้ว
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: Logout และ revoke session ปัจจุบัน
+      operationId: logout
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: Logout สำเร็จ
+          headers:
+            X-Should-Refresh:
+              $ref: "#/components/headers/ShouldRefreshHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/auth/me/password:
+    patch:
+      tags:
+        - Auth
+      summary: เปลี่ยนรหัสผ่านของตัวเอง
+      description: |
+        ตรวจรหัสผ่านเดิมก่อนตั้งรหัสใหม่ ไม่ต้องมี permission พิเศษ (admin ทุกระดับเปลี่ยนรหัสตัวเองได้)
+        session ปัจจุบันใช้งานต่อได้ ส่วน session อื่นของ account นี้จะถูก revoke ทั้งหมด
+      operationId: changeOwnPassword
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ChangeOwnPasswordRequest"
+      responses:
+        "200":
+          description: เปลี่ยนรหัสผ่านสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: VALIDATION_ERROR / INVALID_CURRENT_PASSWORD รหัสผ่านเดิมไม่ถูกต้อง
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+  /api/auth/me:
+    get:
+      tags:
+        - Auth
+      summary: ดึงข้อมูลของผู้ที่ login อยู่
+      operationId: me
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: ข้อมูลผู้ใช้
+          headers:
+            X-Should-Refresh:
+              $ref: "#/components/headers/ShouldRefreshHeader"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MeResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"

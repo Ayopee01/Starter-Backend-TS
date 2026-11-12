@@ -1,0 +1,19 @@
+paths:
+  /:
+    get:
+      tags:
+        - System
+      summary: ตรวจว่า API ทำงานอยู่
+      operationId: root
+      responses:
+        "200":
+          description: สถานะของ API
+  /health:
+    get:
+      tags:
+        - System
+      summary: Health check
+      operationId: health
+      responses:
+        "200":
+          description: สถานะของ service

@@ -1,0 +1,217 @@
+paths:
+  /api/admin/roles:
+    get:
+      tags:
+        - Admin Settings
+      summary: ดึงรายชื่อ Admin แยกตามระดับสิทธิ์
+      description: ต้องมีสิทธิ์ roles:read
+      operationId: listRoles
+      security:
+        - bearerAuth: []
+      responses:
+        "200":
+          description: รายชื่อ Admin ตามระดับ owner / manager / supervisor
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AdminRoleListResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+  /api/admin/admins:
+    post:
+      tags:
+        - Admin Settings
+      summary: สร้าง Admin account ใหม่
+      description: |
+        ต้องมีสิทธิ์ admins:create
+        - permission_level ต้องต่ำกว่าระดับของผู้สร้าง (owner สร้าง manager/supervisor ได้, manager สร้าง supervisor ได้)
+        - permissions ที่ให้ต้องเป็นสิทธิ์ที่ผู้สร้างมีอยู่เอง
+      operationId: createAdminAccount
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAdminAccountRequest"
+      responses:
+        "201":
+          description: สร้างสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateAdminAccountResponse"
+        "400":
+          description: VALIDATION_ERROR
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: FORBIDDEN / NEW_PERMISSION_LEVEL_NOT_MANAGEABLE / PERMISSIONS_NOT_GRANTABLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "409":
+          description: USERNAME_ALREADY_EXISTS
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /api/admin/admins/{adminCode}:
+    patch:
+      tags:
+        - Admin Settings
+      summary: แก้ข้อมูลพื้นฐานของ Admin คนอื่น (ชื่อ / email)
+      description: |
+        ต้องมีสิทธิ์ admins:update และมีระดับสูงกว่าเป้าหมาย (แก้ตัวเองผ่าน endpoint นี้ไม่ได้)
+
+        ใช้กรณีลูกทีมลืมรหัสผ่านและใช้ email เดิมไม่ได้แล้ว: หัวหน้าแก้ email ให้ แล้วลูกทีมไปขอลิงก์ที่ POST /api/auth/forgot-password เอง
+        เมื่อเปลี่ยน email ลิงก์ลืมรหัสผ่านที่เคยส่งไป email เดิมจะใช้ไม่ได้ทันที
+        email ซ้ำกับบัญชีอื่นจะได้ 409 EMAIL_ALREADY_EXISTS
+      operationId: updateAdminAccount
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AdminCodePath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAdminAccountRequest"
+      responses:
+        "200":
+          description: แก้ไขสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UpdateAdminAccountResponse"
+        "400":
+          description: VALIDATION_ERROR / INVALID_ADMIN_CODE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/TargetForbidden"
+        "404":
+          $ref: "#/components/responses/AdminNotFound"
+    delete:
+      tags:
+        - Admin Settings
+      summary: ลบ Admin คนอื่นถาวร
+      description: |
+        ต้องมีสิทธิ์ admins:delete และมีระดับสูงกว่าเป้าหมาย (ระดับเท่ากันหรือสูงกว่าลบไม่ได้ ลบตัวเองไม่ได้)
+        ลบ session, permissions และลิงก์ลืมรหัสผ่านของเป้าหมายไปด้วย บัญชีที่เป้าหมายเคยสร้างไว้ยังอยู่ (created_by เป็น null)
+      operationId: deleteAdminAccount
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AdminCodePath"
+      responses:
+        "200":
+          description: ลบสำเร็จ
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MessageResponse"
+        "400":
+          description: INVALID_ADMIN_CODE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/TargetForbidden"
+        "404":
+          $ref: "#/components/responses/AdminNotFound"
+  /api/admin/users/{adminCode}/permissions:
+    get:
+      tags:
+        - Admin Settings
+      summary: ดึงสิทธิ์ของ Admin คนอื่น
+      description: ต้องมีสิทธิ์ permissions:read และมีระดับสูงกว่าเป้าหมาย (สิทธิ์ของตัวเองดูที่ /api/auth/me)
+      operationId: getAdminUserPermissions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AdminCodePath"
+      responses:
+        "200":
+          description: สิทธิ์ของ Admin เป้าหมาย
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AccountPermissionsResponse"
+        "400":
+          description: INVALID_ADMIN_CODE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          $ref: "#/components/responses/TargetForbidden"
+        "404":
+          $ref: "#/components/responses/AdminNotFound"
+    patch:
+      tags:
+        - Admin Settings
+      summary: แก้ระดับสิทธิ์ status และ permissions ของ Admin คนอื่น
+      description: |
+        ต้องมีสิทธิ์ permissions:update
+        - ระดับเดิมและระดับใหม่ของเป้าหมายต้องต่ำกว่าผู้แก้
+        - permissions ที่ให้ต้องเป็นสิทธิ์ที่ผู้แก้มีอยู่เอง และส่งเป็นชุดเต็ม (แทนที่ของเดิมทั้งหมด)
+        - session ทั้งหมดของเป้าหมายจะถูก revoke ต้อง login ใหม่เพื่อรับสิทธิ์ชุดใหม่
+      operationId: updateAdminUserPermissions
+      security:
+        - bearerAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AdminCodePath"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateAccountPermissionsRequest"
+      responses:
+        "200":
+          description: แก้ไขสำเร็จ
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: "#/components/schemas/AccountPermissionsResponse"
+                  - type: object
+                    properties:
+                      message:
+                        type: string
+                        example: Admin permissions updated successfully. Active sessions were revoked.
+        "400":
+          description: VALIDATION_ERROR / INVALID_ADMIN_CODE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "403":
+          description: FORBIDDEN / CANNOT_MANAGE_OWN_ACCOUNT / TARGET_PERMISSION_LEVEL_NOT_MANAGEABLE / NEW_PERMISSION_LEVEL_NOT_MANAGEABLE / PERMISSIONS_NOT_GRANTABLE
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          $ref: "#/components/responses/AdminNotFound"

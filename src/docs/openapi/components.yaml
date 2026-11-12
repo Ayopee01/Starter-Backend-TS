@@ -1,0 +1,397 @@
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  headers:
+    ShouldRefreshHeader:
+      description: >-
+        แนบมาเมื่อ Access Token เหลือเวลาน้อยกว่า ACCESS_TOKEN_REFRESH_THRESHOLD (default 2 นาที)
+        เป็นสัญญาณให้ client เรียก POST /api/auth/refresh เอง server ไม่ได้ออก token ใหม่ให้ใน header นี้
+      schema:
+        type: string
+        enum:
+          - "true"
+  responses:
+    Unauthorized:
+      description: >-
+        INVALID_TOKEN ไม่มี token, token ผิด, session ถูก revoke (login ซ้ำ / logout) หรือบัญชีถูกปิด
+        / TOKEN_EXPIRED access token หมดอายุ ให้เรียก /api/auth/refresh
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    Forbidden:
+      description: FORBIDDEN ไม่มีสิทธิ์ที่ endpoint นี้ต้องการ
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    TargetForbidden:
+      description: >-
+        FORBIDDEN ไม่มีสิทธิ์ที่ endpoint นี้ต้องการ / CANNOT_MANAGE_OWN_ACCOUNT จัดการตัวเองไม่ได้
+        / TARGET_PERMISSION_LEVEL_NOT_MANAGEABLE เป้าหมายมีระดับเท่ากันหรือสูงกว่า
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+    AdminNotFound:
+      description: ADMIN_NOT_FOUND ไม่พบ Admin ตาม AdminCode
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+  parameters:
+    AdminCodePath:
+      in: path
+      name: adminCode
+      required: true
+      schema:
+        type: string
+        example: ADM0002
+      description: รหัส Admin รูปแบบ ADM ตามด้วย account id 4 หลัก
+  schemas:
+    PermissionLevel:
+      type: string
+      enum:
+        - owner
+        - manager
+        - supervisor
+      description: ระดับสิทธิ์ เรียงจากสูงไปต่ำ owner > manager > supervisor
+    AdminPermission:
+      type: string
+      enum:
+        - roles:read
+        - admins:create
+        - admins:update
+        - admins:delete
+        - permissions:read
+        - permissions:update
+    AdminAccount:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 2
+        admin_code:
+          type: string
+          example: ADM0002
+        username:
+          type: string
+          example: manager01
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+        full_name:
+          type: string
+          example: Branch Manager
+        email:
+          type: string
+          nullable: true
+          example: manager01@example.com
+        permission_level:
+          $ref: "#/components/schemas/PermissionLevel"
+        created_by:
+          type: integer
+          nullable: true
+          example: 1
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AccountPermissionsResponse:
+      type: object
+      properties:
+        account_id:
+          type: integer
+          example: 2
+        admin_code:
+          type: string
+          example: ADM0002
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+        permission_level:
+          $ref: "#/components/schemas/PermissionLevel"
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPermission"
+    AdminRoleListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                $ref: "#/components/schemas/PermissionLevel"
+              name:
+                type: string
+                example: Owner
+              order:
+                type: integer
+                example: 0
+              admins:
+                type: array
+                items:
+                  $ref: "#/components/schemas/AdminAccount"
+    CreateAdminAccountRequest:
+      type: object
+      required:
+        - username
+        - password
+        - full_name
+        - permission_level
+      properties:
+        username:
+          type: string
+          description: ใช้ได้เฉพาะตัวอักษร ตัวเลข . _ -
+          example: manager01
+        password:
+          type: string
+          format: password
+          minLength: 8
+          example: password123
+        full_name:
+          type: string
+          example: Branch Manager
+        email:
+          type: string
+          nullable: true
+          example: manager01@example.com
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+          default: active
+        permission_level:
+          $ref: "#/components/schemas/PermissionLevel"
+        permissions:
+          type: array
+          default: []
+          items:
+            $ref: "#/components/schemas/AdminPermission"
+          example:
+            - roles:read
+            - admins:create
+    CreateAdminAccountResponse:
+      allOf:
+        - $ref: "#/components/schemas/AccountPermissionsResponse"
+        - type: object
+          properties:
+            message:
+              type: string
+              example: Admin account created successfully.
+            account:
+              $ref: "#/components/schemas/AdminAccount"
+    UpdateAdminAccountRequest:
+      type: object
+      properties:
+        full_name:
+          type: string
+          example: Branch Manager
+        email:
+          type: string
+          nullable: true
+          description: ส่ง null เพื่อลบ email
+          example: manager01@example.com
+    UpdateAdminAccountResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Admin account updated successfully.
+        account:
+          $ref: "#/components/schemas/AdminAccount"
+    ForgotPasswordRequest:
+      type: object
+      required:
+        - email
+      properties:
+        email:
+          type: string
+          format: email
+          example: admin@example.com
+    ResetPasswordWithTokenRequest:
+      type: object
+      required:
+        - token
+        - new_password
+      properties:
+        token:
+          type: string
+          description: ค่า token จาก query string ของลิงก์ใน email
+          example: q3Zr8V0m1n2b3v4c5x6z7a8s9d0f1g2h3j4k5l6m7n8
+        new_password:
+          type: string
+          format: password
+          minLength: 8
+          example: newpassword123
+    ChangeOwnPasswordRequest:
+      type: object
+      required:
+        - current_password
+        - new_password
+      properties:
+        current_password:
+          type: string
+          format: password
+          example: admin1234
+        new_password:
+          type: string
+          format: password
+          minLength: 8
+          example: newpassword123
+    UpdateAccountPermissionsRequest:
+      type: object
+      required:
+        - permission_level
+      properties:
+        permission_level:
+          $ref: "#/components/schemas/PermissionLevel"
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+          description: ไม่ส่ง = ไม่เปลี่ยน status
+        permissions:
+          type: array
+          default: []
+          description: สิทธิ์ชุดเต็ม แทนที่ของเดิมทั้งหมด
+          items:
+            $ref: "#/components/schemas/AdminPermission"
+    ErrorResponse:
+      type: object
+      required:
+        - statusCode
+        - code
+        - message
+      properties:
+        statusCode:
+          type: integer
+          description: รหัสสถานะ HTTP
+          example: 401
+        code:
+          type: string
+          description: รหัสผลลัพธ์
+          example: INVALID_TOKEN
+        message:
+          type: string
+          description: ข้อความผลลัพธ์
+          example: Session is no longer active.
+        validation_errors:
+          type: array
+          description: มีเฉพาะ VALIDATION_ERROR
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+                nullable: true
+                example: username
+              message:
+                type: string
+                example: Required.
+    MessageResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          example: Logged out successfully.
+    LoginRequest:
+      type: object
+      required:
+        - username
+        - password
+      properties:
+        username:
+          type: string
+          description: ชื่อผู้ใช้
+          example: admin
+        password:
+          type: string
+          format: password
+          description: รหัสผ่าน
+          example: admin1234
+    RefreshRequest:
+      type: object
+      required:
+        - refresh_token
+      properties:
+        refresh_token:
+          type: string
+          description: Refresh Token ล่าสุดที่ได้จาก login หรือ refresh
+          example: refresh-jwt-token
+    MeResponse:
+      type: object
+      properties:
+        id:
+          type: integer
+          example: 1
+        username:
+          type: string
+          example: admin
+        status:
+          type: string
+          enum:
+            - active
+            - inactive
+        full_name:
+          type: string
+          example: System Admin
+        email:
+          type: string
+          nullable: true
+          example: admin@example.com
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        admin_code:
+          type: string
+          example: ADM0001
+        permission_level:
+          $ref: "#/components/schemas/PermissionLevel"
+        permissions:
+          type: array
+          items:
+            $ref: "#/components/schemas/AdminPermission"
+        latest_active_at:
+          type: string
+          format: date-time
+          nullable: true
+          description: เวลาที่ session ปัจจุบัน login หรือ refresh ล่าสุด
+    AuthSuccessResponse:
+      type: object
+      properties:
+        access_token:
+          type: string
+          description: Token สำหรับเรียก API อายุตาม JWT_ACCESS_EXPIRES_IN (default 15 นาที)
+          example: access-jwt-token
+        refresh_token:
+          type: string
+          description: Token สำหรับขอ access token ใหม่ ใช้ได้ครั้งเดียว
+          example: refresh-jwt-token
+        token_type:
+          type: string
+          enum:
+            - Bearer
+        expires_in:
+          type: integer
+          description: อายุ access token (วินาที)
+          example: 900
+        profile:
+          $ref: "#/components/schemas/MeResponse"

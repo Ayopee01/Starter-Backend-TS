@@ -1,0 +1,77 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model Account {
+  id              Int      @id @default(autoincrement())
+  username        String   @unique @db.VarChar(100)
+  passwordHash    String   @map("password_hash") @db.VarChar(512)
+  status          String   @default("active") @db.VarChar(20)
+  fullName        String   @map("full_name") @db.VarChar(255)
+  email           String?  @unique @db.VarChar(255)
+  permissionLevel String?  @map("permission_level") @db.VarChar(50)
+  createdBy       Int?     @map("created_by")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamp(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.Timestamp(3)
+
+  creator         Account?            @relation("AccountCreatedBy", fields: [createdBy], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  createdAccounts Account[]           @relation("AccountCreatedBy")
+  sessions        UserSession[]
+  permissions     AccountPermission[]
+  passwordResets  PasswordResetToken[]
+
+  @@map("accounts")
+}
+
+// Token ลืมรหัสผ่าน เก็บเฉพาะ hash (token จริงอยู่ในลิงก์ที่ส่งทาง email เท่านั้น)
+model PasswordResetToken {
+  id        Int       @id @default(autoincrement())
+  accountId Int       @map("account_id")
+  tokenHash String    @unique @map("token_hash") @db.VarChar(128)
+  expiresAt DateTime  @map("expires_at") @db.Timestamp(3)
+  usedAt    DateTime? @map("used_at") @db.Timestamp(3)
+  ipAddress String?   @map("ip_address") @db.VarChar(64)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamp(3)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@index([accountId, createdAt])
+  @@map("password_reset_tokens")
+}
+
+model AccountPermission {
+  id         Int      @id @default(autoincrement())
+  accountId  Int      @map("account_id")
+  permission String   @db.VarChar(100)
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamp(3)
+  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamp(3)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@unique([accountId, permission])
+  @@index([permission])
+  @@map("account_permissions")
+}
+
+model UserSession {
+  id               Int       @id @default(autoincrement())
+  accountId        Int       @map("account_id")
+  refreshTokenHash String    @map("refresh_token_hash") @db.VarChar(512)
+  ipAddress        String?   @map("ip_address") @db.VarChar(64)
+  userAgent        String?   @map("user_agent") @db.VarChar(512)
+  isActive         Boolean   @default(true) @map("is_active")
+  lastActiveAt     DateTime  @default(now()) @map("last_active_at") @db.Timestamp(3)
+  expiresAt        DateTime  @map("expires_at") @db.Timestamp(3)
+  revokedAt        DateTime? @map("revoked_at") @db.Timestamp(3)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamp(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamp(3)
+
+  account Account @relation(fields: [accountId], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([accountId, isActive])
+  @@map("user_sessions")
+}
